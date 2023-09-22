@@ -29,6 +29,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 @ConfigurationPropertiesScan
 public class SampleTestApplication {
 
+	// @pzs 测试入口，跟踪 SpringBoot 启动流程
 	// NOTE: this application will intentionally not start without MySQL, the test will
 	// still run.
 

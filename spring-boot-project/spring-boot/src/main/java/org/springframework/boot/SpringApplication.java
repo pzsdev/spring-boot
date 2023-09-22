@@ -240,6 +240,13 @@ public class SpringApplication {
 	private boolean lazyInitialization = false;
 
 	/**
+	 *
+	 * @apiNote pzs: 构建一个 SpringApplication 实例，并执行一些初始化操作。
+	 * 设置 主要 bean 来源集合；
+	 * 设置应用程序类型；
+	 * 设置 ApplicationContextInitializer 初始化器集合；
+	 * 设置 Listener 监听器集合等。
+	 *
 	 * Create a new {@link SpringApplication} instance. The application context will load
 	 * beans from the specified primary sources (see {@link SpringApplication class-level}
 	 * documentation for details. The instance can be customized before calling
@@ -250,6 +257,7 @@ public class SpringApplication {
 	 * @see #setSources(Set)
 	 */
 	public SpringApplication(Class<?>... primarySources) {
+		// @pzs调用另一个有参构造方法
 		this(null, primarySources);
 	}
 
@@ -267,10 +275,15 @@ public class SpringApplication {
 	public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySources) {
 		this.resourceLoader = resourceLoader;
 		Assert.notNull(primarySources, "PrimarySources must not be null");
+		// @pzs将主要的类来源设置到一个集合里，默认来源只有一个启动类的class
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
+		// 设置 web 应用程序类型，可能是 SERVLET 或 REACTIVE，也可能是非 web 应用程序
 		this.webApplicationType = WebApplicationType.deduceFromClasspath();
+		// 设置 ApplicationContextInitializer，应用程序初始化器。从 META_INF/spring.factories 文件中加载
 		setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+		// 设置 ApplicationListener，应用程序监听器，从 META_INF/spring.factories 文件中加载
 		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+		// 设置主应用程序类，一般就是 SpringBoot 项目的启动类
 		this.mainApplicationClass = deduceMainApplicationClass();
 	}
 
@@ -296,56 +309,118 @@ public class SpringApplication {
 	 * @return a running {@link ApplicationContext}
 	 */
 	public ConfigurableApplicationContext run(String... args) {
+		//创建并启动一个计时器，用于统计run方法执行时常，即应用启动时常
 		StopWatch stopWatch = new StopWatch();
 		stopWatch.start();
+
+		//spring的应用程序上下文，代表着spring容器
 		ConfigurableApplicationContext context = null;
+
+		// 配置headless系统属性，Headless模式是系统的一种配置模式。
+		// 在该模式下，系统缺少了显示设备、键盘或鼠标。默认为true。
 		configureHeadlessProperty();
+
+		// @pzs 获取全部SpringApplicationRunListener运行监听器并封装到SpringApplicationRunListeners中。
+		// SpringApplicationRunListener的实现也是从spring.factories文件中加载的，其中一个实现就是EventPublishingRunListener。
 		SpringApplicationRunListeners listeners = getRunListeners(args);
+
+		//执行所有SpringApplicationRunListener监听器的starting的方法，可以用于非常早期的初始化操作。
+		// EventPublishingRunListener的starting方法会向之前初始化的所有ApplicationListener发送一个
+		// ApplicationStartingEvent事件，标志着SpringApplication的启动。
+
+		// 在run()方法开始执行时，该方法就立即被调用，启动所有运行监听器，可用于在初始化最早期时做一些工作。
 		listeners.starting();
+
 		try {
+			// 根据SpringApplicationRunListeners和启动参数准备环境。这一步会查找项目的配置文件以及激活的profile等信息。
+			// 启动监听器之后，首先需要准备容器环境，根据SpringApplicationRunListeners和启动参数准备环境。
+			// 这里会对外部配置的参数进行设置，比如端口号之类的。
 			ApplicationArguments applicationArguments = new DefaultApplicationArguments(args);
 			ConfigurableEnvironment environment = prepareEnvironment(listeners, applicationArguments);
 			configureIgnoreBeanInfo(environment);
+
+			// 打印启动banner图
 			Banner printedBanner = printBanner(environment);
+
+			// 创建spring上下文容器实例，核心方法。
+			// 基于servlet的web项目容器是AnnotationConfigServletWebServerApplicationContext类型。
 			context = createApplicationContext();
+
+			//准备上下文容器，核心方法。
+			// 该方法会将我们的启动类注入到springboot的容器上下文内部的beanfactory中，
+			// 有了这一步，后面就可以解析启动类的注解和各种配置，
+			// 进而执行springboot的自动配置（启动类上有@SpringBootApplication注解，还有其他各种注解）。
 			prepareContext(context, environment, listeners, applicationArguments, printedBanner);
+
+			// 刷新上下文容器，核心方法。该方法就是spring容器的启动方法，将会加载和解析容器中的bean以及各种配置。
+			// 这个方法的源码非常多，跳转过去就是Spring IoC容器初始化源码。
+			// （applicationContext.refresh() --> ConfigurableApplicationContext.refresh()）
 			refreshContext(context);
+
+			// 刷新后处理。该方法是一个扩展方法，没有提供任何默认的实现，我们自定义的子类可以进行扩展。
 			afterRefresh(context, applicationArguments);
+
+			// springboot项目启动完毕，停止stopWatch计时
 			stopWatch.stop();
+			// 打印容器启动耗时日志
 			if (this.logStartupInfo) {
 				new StartupInfoLogger(this.mainApplicationClass).logStarted(getApplicationLog(), stopWatch);
 			}
+
+			// 应用SpringApplicationRunListener监听器的started方法。
+			// EventPublishingRunListener将会发出ApplicationStartedEvent事件，表明容器已启动
 			listeners.started(context);
+
+			// 调用runner，即执行容器中的ApplicationRunner和CommandLineRunner类型bean的run方法。
+			// 这也是一个扩展点，用于执行spring容器完全启动后需要做的逻辑。
 			callRunners(context, applicationArguments);
 		}
 		catch (Throwable ex) {
+			// 如果启动过程中出现了异常，那么会将异常信息加入到exceptionReporters中并抛出IllegalStateException
 			handleRunFailure(context, ex, listeners);
 			throw new IllegalStateException(ex);
 		}
 
 		try {
+			// 应用SpringApplicationRunListener监听器的running方法
+			// EventPublishingRunListener将会发出ApplicationReadyEvent事件，表明容器已就绪，可以被使用了
 			listeners.running(context);
 		}
 		catch (Throwable ex) {
+			// 如果启动过程中出现了异常，那么会将异常信息加入到exceptionReporters中并抛出IllegalStateException
 			handleRunFailure(context, ex, null);
 			throw new IllegalStateException(ex);
 		}
+		// 返回容器
 		return context;
 	}
 
 	private ConfigurableEnvironment prepareEnvironment(SpringApplicationRunListeners listeners,
 			ApplicationArguments applicationArguments) {
+		// 获取或者创建环境对象，一般都是StandardServletEnvironment类型
 		// Create and configure the environment
 		ConfigurableEnvironment environment = getOrCreateEnvironment();
+
+		// 配置环境
+		// 主要配置属性源和激活的环境，将来自外部的配置源放在属性源集合的头部
 		configureEnvironment(environment, applicationArguments.getSourceArgs());
+		//继续封装属性源
 		ConfigurationPropertySources.attach(environment);
+
+		// 环境准备完毕之后，向所有的ApplicationListener发出ApplicationEnvironmentPreparedEvent事件
 		listeners.environmentPrepared(environment);
+
+		// 将环境对象绑定到SpringApplication
 		bindToSpringApplication(environment);
+
+		// 如果不是自定义的环境变量，若有必要则进行转换，一般都需要转换
 		if (!this.isCustomEnvironment) {
 			environment = new EnvironmentConverter(getClassLoader()).convertEnvironmentIfNecessary(environment,
 					deduceEnvironmentClass());
 		}
+		// 继续封装属性源
 		ConfigurationPropertySources.attach(environment);
+
 		return environment;
 	}
 
@@ -409,6 +484,16 @@ public class SpringApplication {
 
 	private SpringApplicationRunListeners getRunListeners(String[] args) {
 		Class<?>[] types = new Class<?>[] { SpringApplication.class, String[].class };
+
+		// @pzs 借助SpringFactoriesLoader获取所有引入的jar包中和当前类路径下的META-INF/spring.factories文件中指定类型的实例
+		// 这里指定类型为SpringApplicationRunListener，默认情况下spring.factories文件中有一个实现，即EventPublishingRunListener
+		// 最终所有的SpringApplicationRunListener集合会被封装到一个SpringApplicationRunListeners对象中。
+
+		// 这个key对应的属性仅在spring-boot.jar的spring.factories文件中被设置，且只有一个实现类EventPublishingRunListener。
+		//# Run Listeners
+		// org.springframework.boot.SpringApplicationRunListener=\
+		// org.springframework.boot.context.event.EventPublishingRunListener
+		// EventPublishingRunListener在被实例化的时候，内部会初始化一个事件广播器，并且会将此前获取的ApplicationListener全部加入到事件广播器中。
 		return new SpringApplicationRunListeners(logger,
 				getSpringFactoriesInstances(SpringApplicationRunListener.class, types, this, args));
 	}
@@ -419,9 +504,14 @@ public class SpringApplication {
 
 	private <T> Collection<T> getSpringFactoriesInstances(Class<T> type, Class<?>[] parameterTypes, Object... args) {
 		ClassLoader classLoader = getClassLoader();
+		// @pzs 借助 SpringFactoriesLoader 获取所有引入的 jar 宝中和当前类路径下的 META_INF/spring.factories 文件中指定类型的实例名称。
+		// spring.factories 文件必须是 Properties 格式，其中 key 是接口或抽象类的完全限定名称，value 是逗号分隔的实现类名称列表。
+		// 使用 名称 set 集合保存数据，确保唯一以防止重复
 		// Use names and ensure unique to protect against duplicates
 		Set<String> names = new LinkedHashSet<>(SpringFactoriesLoader.loadFactoryNames(type, classLoader));
+		// 根据获取的类型全路径名反射创建实例
 		List<T> instances = createSpringFactoriesInstances(type, parameterTypes, classLoader, args, names);
+		// 对实例进行排序
 		AnnotationAwareOrderComparator.sort(instances);
 		return instances;
 	}
@@ -1228,11 +1318,12 @@ public class SpringApplication {
 	/**
 	 * Static helper that can be used to run a {@link SpringApplication} from the
 	 * specified source using default settings.
-	 * @param primarySource the primary source to load
-	 * @param args the application arguments (usually passed from a Java main method)
-	 * @return the running {@link ApplicationContext}
+	 * @param primarySource the primary source to load （启动类的class）
+	 * @param args the application arguments (usually passed from a Java main method)（启动类的参数）
+	 * @return the running {@link ApplicationContext}（可配置的应用程序上下文）
 	 */
 	public static ConfigurableApplicationContext run(Class<?> primarySource, String... args) {
+		// @pzs调用另一个重载方法
 		return run(new Class<?>[] { primarySource }, args);
 	}
 
@@ -1244,6 +1335,8 @@ public class SpringApplication {
 	 * @return the running {@link ApplicationContext}
 	 */
 	public static ConfigurableApplicationContext run(Class<?>[] primarySources, String[] args) {
+		// @pzsnew 一个 SpringApplication 对象，然后执行它的 run 方法
+		// new 的时候就会进行一些初始化操作
 		return new SpringApplication(primarySources).run(args);
 	}
 

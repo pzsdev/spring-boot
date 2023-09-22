@@ -42,8 +42,10 @@ class SpringApplicationRunListeners {
 		this.listeners = new ArrayList<>(listeners);
 	}
 
+	// @pzs 启动所有运行监听器
 	void starting() {
 		for (SpringApplicationRunListener listener : this.listeners) {
+			//调用所有运行监听器的starting方法
 			listener.starting();
 		}
 	}
