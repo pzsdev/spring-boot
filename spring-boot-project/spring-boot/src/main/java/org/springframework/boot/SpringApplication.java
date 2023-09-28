@@ -274,15 +274,21 @@ public class SpringApplication {
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public SpringApplication(ResourceLoader resourceLoader, Class<?>... primarySources) {
 		this.resourceLoader = resourceLoader;
+
 		Assert.notNull(primarySources, "PrimarySources must not be null");
+
 		// @pzs将主要的类来源设置到一个集合里，默认来源只有一个启动类的class
 		this.primarySources = new LinkedHashSet<>(Arrays.asList(primarySources));
+
 		// 设置 web 应用程序类型，可能是 SERVLET 或 REACTIVE，也可能是非 web 应用程序
 		this.webApplicationType = WebApplicationType.deduceFromClasspath();
+
 		// 设置 ApplicationContextInitializer，应用程序初始化器。从 META_INF/spring.factories 文件中加载
 		setInitializers((Collection) getSpringFactoriesInstances(ApplicationContextInitializer.class));
+
 		// 设置 ApplicationListener，应用程序监听器，从 META_INF/spring.factories 文件中加载
 		setListeners((Collection) getSpringFactoriesInstances(ApplicationListener.class));
+
 		// 设置主应用程序类，一般就是 SpringBoot 项目的启动类
 		this.mainApplicationClass = deduceMainApplicationClass();
 	}
@@ -397,13 +403,14 @@ public class SpringApplication {
 
 	private ConfigurableEnvironment prepareEnvironment(SpringApplicationRunListeners listeners,
 			ApplicationArguments applicationArguments) {
-		// 获取或者创建环境对象，一般都是StandardServletEnvironment类型
+		// 获取或者创建环境对象，一般都是 StandardServletEnvironment类型
 		// Create and configure the environment
 		ConfigurableEnvironment environment = getOrCreateEnvironment();
 
 		// 配置环境
 		// 主要配置属性源和激活的环境，将来自外部的配置源放在属性源集合的头部
 		configureEnvironment(environment, applicationArguments.getSourceArgs());
+
 		//继续封装属性源
 		ConfigurationPropertySources.attach(environment);
 
@@ -437,43 +444,76 @@ public class SpringApplication {
 
 	private void prepareContext(ConfigurableApplicationContext context, ConfigurableEnvironment environment,
 			SpringApplicationRunListeners listeners, ApplicationArguments applicationArguments, Banner printedBanner) {
+		// 设置环境变量
 		context.setEnvironment(environment);
+		// 对容器的后处理，尝试注入 beanNameGenerator， 设置 resourceLoader，ConversionService
 		postProcessApplicationContext(context);
+
+		// 应用 ApplicationContextInitializer 拓展点的 initialize 方法
+		// 从而实现自定义容器的逻辑，这是一个拓展点，添加自己的 ApplicationContextInitializer
 		applyInitializers(context);
+
+		// 应用SpringApplicationRunListener监听器的contextPrepared方法
 		listeners.contextPrepared(context);
+
+		// 是否打印启动相关日志，默认 true
 		if (this.logStartupInfo) {
 			logStartupInfo(context.getParent() == null);
+
+			// 记录激活的配置环境 profiles 日志信息
 			logStartupProfileInfo(context);
 		}
+
+		// 获取此上下文内部的 beanFactory，即 bean 工厂
 		// Add boot specific singleton beans
 		ConfigurableListableBeanFactory beanFactory = context.getBeanFactory();
+
+		// 注册单例对象
 		beanFactory.registerSingleton("springApplicationArguments", applicationArguments);
 		if (printedBanner != null) {
 			beanFactory.registerSingleton("springBootBanner", printedBanner);
 		}
+
+		// 如果是该类型，servlet 项目默认就是该类型
 		if (beanFactory instanceof DefaultListableBeanFactory) {
+			// 设置是否允许同名的 bean 的覆盖，这里默认 false，如果有同名的 bean 就会抛出异常
 			((DefaultListableBeanFactory) beanFactory)
 					.setAllowBeanDefinitionOverriding(this.allowBeanDefinitionOverriding);
 		}
+
+		// 是否允许懒加载，默认 false，即所有定义的bean 及其依赖项都是在创建应用程序上下文时创建的
 		if (this.lazyInitialization) {
 			context.addBeanFactoryPostProcessor(new LazyInitializationBeanFactoryPostProcessor());
 		}
+
+		// 加载启动源，默认就是我们的启动类
 		// Load the sources
 		Set<Object> sources = getAllSources();
 		Assert.notEmpty(sources, "Sources must not be empty");
+
+		// 加载启动类，并将启动类注入到容器，关键方法
+		// 有了这一步，后面就可以解析启动类上的注解和各种配置，进行执行 springboot 的自动配置
 		load(context, sources.toArray(new Object[0]));
+
+		// 应用SpringApplicationRunListener监听器的contextLoaded方法
+		// EventPublishingRunListener将会发出ApplicationPreparedEvent事件
 		listeners.contextLoaded(context);
 	}
 
 	private void refreshContext(ConfigurableApplicationContext context) {
+		//  判断是否注册销毁容器的钩子方法，默认 true
 		if (this.registerShutdownHook) {
 			try {
+				// 注册销毁容器的钩子
+				// 该方法向 JVM 运行时环境注册一个关闭钩子函数，在 JVM 关闭时会先关闭此上下文，即执行此上下文的 close 方法
 				context.registerShutdownHook();
 			}
 			catch (AccessControlException ex) {
 				// Not allowed in some environments.
 			}
 		}
+
+		// 刷新容器
 		refresh((ApplicationContext) context);
 	}
 
@@ -561,11 +601,16 @@ public class SpringApplication {
 	 * @see #configurePropertySources(ConfigurableEnvironment, String[])
 	 */
 	protected void configureEnvironment(ConfigurableEnvironment environment, String[] args) {
+		// 是否需要添加转换服务，默认需要
 		if (this.addConversionService) {
 			ConversionService conversionService = ApplicationConversionService.getSharedInstance();
 			environment.setConversionService((ConfigurableConversionService) conversionService);
 		}
+
+		// 配置属性源，所谓属性源实际上可以看作是多个配置集的集合，来自外部的配置集将会被放在配置集合的首位
 		configurePropertySources(environment, args);
+
+		// 配置激活的环境
 		configureProfiles(environment, args);
 	}
 

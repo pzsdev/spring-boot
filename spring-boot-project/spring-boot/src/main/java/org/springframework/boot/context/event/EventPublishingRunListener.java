@@ -87,6 +87,7 @@ public class EventPublishingRunListener implements SpringApplicationRunListener,
 
 	@Override
 	public void environmentPrepared(ConfigurableEnvironment environment) {
+		// 向所有 ApplicationListener 发送 ApplicationEnvironmentPreparedEvent 事件
 		this.initialMulticaster
 				.multicastEvent(new ApplicationEnvironmentPreparedEvent(this.application, this.args, environment));
 	}

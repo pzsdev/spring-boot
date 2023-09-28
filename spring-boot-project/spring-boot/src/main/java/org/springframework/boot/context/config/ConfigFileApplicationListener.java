@@ -117,6 +117,15 @@ public class ConfigFileApplicationListener implements EnvironmentPostProcessor, 
 
 	private static final String DEFAULT_PROPERTIES = "defaultProperties";
 
+	/**
+	 * 配置文件加载位置
+	 *
+	 * 加载优先级和这里的位置是相反的，因此，加载顺序为：
+	 * 1、项目根目录下的 /config 目录下的配置文件；
+	 * 2、项目根目录配置文件；
+	 * 3、项目类路径（resources）下的/config 目录下的配置文件
+	 * 4、项目类路径（resources）下的配置文件。
+	 */
 	// Note the order is from least to most specific (last one wins)
 	private static final String DEFAULT_SEARCH_LOCATIONS = "classpath:/,classpath:/config/,file:./,file:./config/*/,file:./config/";
 
@@ -185,8 +194,13 @@ public class ConfigFileApplicationListener implements EnvironmentPostProcessor, 
 				|| ApplicationPreparedEvent.class.isAssignableFrom(eventType);
 	}
 
+	/**
+	 * 应用程序事件处理的方法
+	 * @param event the event to respond to
+	 */
 	@Override
 	public void onApplicationEvent(ApplicationEvent event) {
+		// 如果是环境准备完毕事件，则执行
 		if (event instanceof ApplicationEnvironmentPreparedEvent) {
 			onApplicationEnvironmentPreparedEvent((ApplicationEnvironmentPreparedEvent) event);
 		}
@@ -195,10 +209,21 @@ public class ConfigFileApplicationListener implements EnvironmentPostProcessor, 
 		}
 	}
 
+	/**
+	 * 处理环境准备就绪事件的方法
+	 * @param event
+	 */
 	private void onApplicationEnvironmentPreparedEvent(ApplicationEnvironmentPreparedEvent event) {
+		// 加载环境后处理器 EnvironmentPostProcessor，也是从 spring.factories 文件中加载的
 		List<EnvironmentPostProcessor> postProcessors = loadPostProcessors();
+
+		// 将自己也加入其中，是因为 ConfigFileApplicationListener 继承自 EnvironmentPostProcessor
 		postProcessors.add(this);
+
+		// 排序
 		AnnotationAwareOrderComparator.sort(postProcessors);
+
+		// 循环调用 postProcessEnvironment 的 postProcessEnvironment 方法执行环境处理
 		for (EnvironmentPostProcessor postProcessor : postProcessors) {
 			postProcessor.postProcessEnvironment(event.getEnvironment(), event.getSpringApplication());
 		}
@@ -225,7 +250,13 @@ public class ConfigFileApplicationListener implements EnvironmentPostProcessor, 
 	 * @see #addPostProcessors(ConfigurableApplicationContext)
 	 */
 	protected void addPropertySources(ConfigurableEnvironment environment, ResourceLoader resourceLoader) {
+		// @pzs 随机数属性源加入到环境对象中
 		RandomValuePropertySource.addToEnvironment(environment);
+
+		/**
+		 * 关键代码
+		 * 通过 ConfigFileApplicationListener 的 内部类 Loader 来加载配置文件
+		 */
 		new Loader(environment, resourceLoader).load();
 	}
 

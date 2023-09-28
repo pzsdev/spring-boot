@@ -50,7 +50,12 @@ class SpringApplicationRunListeners {
 		}
 	}
 
+	/**
+	 * 发布环境已准备事件
+	 * @param environment 已准备好的环境对象
+	 */
 	void environmentPrepared(ConfigurableEnvironment environment) {
+		// 调用所有运行监听器的environmentPrepared方法
 		for (SpringApplicationRunListener listener : this.listeners) {
 			listener.environmentPrepared(environment);
 		}
